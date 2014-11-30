@@ -31,9 +31,9 @@ function print_help {
     echo -e "\t view [article|image|video] - view table of items"
 }
 
-function items_count {
+function retrieve {
     local DATA='{"consumer_key":"'$CONSUMER_KEY'","access_token": "'$ACCESS_TOKEN'"'
-    local TYPE='item'
+    TYPE='item'
     case $1 in
         article|image|video )
             DATA="$DATA,\"contentType\":\"$1\""
@@ -41,16 +41,33 @@ function items_count {
             ;;
     esac
     DATA="$DATA}"
+    LIST=`curl -s -H "Content-Type: application/json" -X POST -d "$DATA" https://getpocket.com/v3/get`
+}
+
+function items_count {
+    retrieve $1
     if which jq > /dev/null; then
-        local COUNT=`curl -s -H "Content-Type: application/json" -X POST -d "$DATA" https://getpocket.com/v3/get | jq '.list | length'`
+        local COUNT=`echo $LIST | jq '.list | length'`
     else
-        local COUNT=`curl -s -H "Content-Type: application/json" -X POST -d "$DATA" https://getpocket.com/v3/get | tr ',' '\n' | grep -c -o 'item_id":'`
+        local COUNT=`echo $LIST | tr ',' '\n' | grep -c -o 'item_id":'`
     fi
     echo "Unread pocket "$TYPE"s: $COUNT"
 }
 
 function items_view {
-    echo "test"
+    if which jq > /dev/null; then
+        retrieve $1
+        local COUNT=`echo $LIST | jq '.list | length'`
+        if [[ COUNT -eq 0 ]]; then
+            echo "Sorry, you don't have "$TYPE"s in yout pocket :-("
+        elif [[ COUNT -le 10 ]]; then
+            (echo -e '"id@title@word count"' && echo $LIST | jq '.list[] | .item_id + "@" + .resolved_title + "@" + .word_count') | column -t -s @ -o ' | '
+        else
+            (echo -e '"id@title@word count"' && echo $LIST | jq '.list[] | .item_id + "@" + .resolved_title + "@" + .word_count') | column -t -s @ -o ' | ' | less
+        fi
+    else 
+        echo "This functionality require jq to be installed (http://stedolan.github.io/jq/)";
+    fi
 }
 
 # Main
@@ -59,6 +76,7 @@ case $1 in
         items_count $2
         ;;
     "view" )
+        items_view $2
         ;;
     "add" )
         ;;
